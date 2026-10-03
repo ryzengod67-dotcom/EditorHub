@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#111318">
+<link rel="manifest" href="manifest.json">
+<title>EDITOR HUB</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0b0d11;color:#fff;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+header{height:58px;display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:#111318;border-bottom:1px solid #252933;position:sticky;top:0;z-index:5}
+.brand{display:flex;gap:9px;align-items:center;font-weight:800;letter-spacing:.5px}.brand img{width:38px;height:38px;border-radius:10px;object-fit:cover}
+.btn{border:0;border-radius:10px;background:#262a34;color:#fff;padding:10px 13px;font-weight:700}.primary{background:#ff1744}
+main{max-width:720px;margin:auto;padding:12px 12px 90px}.stage{background:#050607;border-radius:16px;overflow:hidden;position:relative;min-height:280px;display:grid;place-items:center;border:1px solid #242832}
+canvas{width:100%;height:auto;display:block;background:#050607}.empty{text-align:center;color:#9ba1ad;padding:50px 20px}.empty b{display:block;color:#fff;font-size:20px;margin-bottom:8px}
+.panel{margin-top:12px;background:#151820;border:1px solid #252a34;border-radius:15px;padding:12px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.row>*{flex:1}.row .small{flex:0 0 auto}
+input[type=file]{display:none}.upload{display:block;text-align:center;background:#ff1744;padding:13px;border-radius:11px;font-weight:800}
+label{font-size:12px;color:#9fa6b3;display:block;margin:8px 0 5px}
+input[type=range]{width:100%;accent-color:#ff1744}input[type=text]{width:100%;background:#0e1015;border:1px solid #303541;color:#fff;padding:11px;border-radius:9px}
+.tools{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.tool{padding:11px 5px;background:#20242e;border:0;border-radius:10px;color:#fff;font-weight:700;font-size:12px}
+.tool.active{outline:2px solid #ff1744}.timeline{height:44px;background:#0d1015;border-radius:9px;margin-top:10px;position:relative;overflow:hidden}.track{position:absolute;left:0;right:0;top:15px;height:14px;background:#333846;border-radius:7px}.playhead{position:absolute;top:5px;width:3px;height:34px;background:#ff1744;left:0}
+.hidden{display:none}.status{color:#9fa6b3;font-size:12px;margin-top:8px;min-height:18px}
+footer{position:fixed;bottom:0;left:0;right:0;background:#111318;border-top:1px solid #252933;padding:8px;display:flex;gap:8px;justify-content:center;z-index:6}
+footer button{max-width:230px;width:50%}
+</style>
+</head>
+<body>
+<header><div class="brand"><img src="icon.png"><span>EDITOR HUB</span></div><button class="btn" id="newBtn">New</button></header>
+<main>
+<section class="stage" id="stage"><div class="empty" id="empty"><b>EDITOR HUB</b>Import a video or photo to start editing.</div><canvas id="canvas" class="hidden"></canvas><video id="video" class="hidden" playsinline></video></section>
+
+<div class="panel">
+<label for="file">Media</label><label class="upload" for="file">＋ Import Video / Photo</label><input id="file" type="file" accept="video/*,image/*">
+<div class="timeline"><div class="track"></div><div class="playhead" id="playhead"></div></div>
+</div>
+
+<div class="panel">
+<div class="tools">
+<button class="tool active" data-filter="none">Normal</button><button class="tool" data-filter="grayscale(1)">B&W</button>
+<button class="tool" data-filter="sepia(1)">Sepia</button><button class="tool" data-filter="contrast(1.35)">Contrast</button>
+<button class="tool" id="rot">↻ Rotate</button><button class="tool" id="mirror">⇋ Mirror</button>
+<button class="tool" id="speed">Speed 1×</button><button class="tool" id="mute">🔊 Sound</button>
+</div>
+</div>
+
+<div class="panel">
+<label>Text overlay</label><input id="caption" type="text" placeholder="Type your title...">
+<div class="row"><div><label>Text size</label><input id="size" type="range" min="16" max="72" value="34"></div><div><label>Position</label><input id="pos" type="range" min="10" max="90" value="82"></div></div>
+</div>
+
+<div class="panel">
+<div class="row"><button class="btn" id="play">▶ Play</button><button class="btn" id="pause">Ⅱ Pause</button><button class="btn" id="reset">Reset</button></div>
+<div class="status" id="status">Ready — free editing prototype.</div>
+</div>
+</main>
+<footer><button class="btn primary" id="export">Export Video</button><button class="btn" id="save">Save Project</button></footer>
+
+<script>
+const $=id=>document.getElementById(id);
+const video=$("video"), canvas=$("canvas"), ctx=canvas.getContext("2d");
+let media=null, image=null, kind="", filter="none", rotation=0, mirror=false, speed=1, raf=0, recording=false;
+
+function fitCanvas(w,h){let max=720,s=Math.min(1,max/w);canvas.width=Math.round(w*s);canvas.height=Math.round(h*s)}
+function draw(){
+ if(!media && !image)return;
+ let w=canvas.width,h=canvas.height;ctx.save();ctx.clearRect(0,0,w,h);
+ ctx.fillStyle="#050607";ctx.fillRect(0,0,w,h);
+ ctx.translate(w/2,h/2); if(rotation)ctx.rotate(rotation*Math.PI/180); if(mirror)ctx.scale(-1,1);
+ let sw=(rotation%180)?h:w, sh=(rotation%180)?w:h;
+ if(kind==="video")ctx.drawImage(video,-sw/2,-sh/2,sw,sh);else ctx.drawImage(image,-sw/2,-sh/2,sw,sh);
+ ctx.restore();
+ // filter is applied with canvas filter on the source area by redrawing when needed
+ if(filter!=="none"){let copy=document.createElement("canvas");copy.width=w;copy.height=h;let c=copy.getContext("2d");c.filter=filter;c.drawImage(canvas,0,0);ctx.clearRect(0,0,w,h);ctx.drawImage(copy,0,0)}
+ const text=$("caption").value;if(text){ctx.font=`800 ${$("size").value}px system-ui`;ctx.textAlign="center";ctx.fillStyle="white";ctx.strokeStyle="rgba(0,0,0,.8)";ctx.lineWidth=7;let y=h*($("pos").value/100);ctx.strokeText(text,w/2,y);ctx.fillText(text,w/2,y)}
+ if(kind==="video" && !video.paused)raf=requestAnimationFrame(draw);
+}
+function startLoop(){cancelAnimationFrame(raf);draw()}
+$("file").onchange=e=>{let f=e.target.files[0];if(!f)return;let u=URL.createObjectURL(f);$("empty").classList.add("hidden");canvas.classList.remove("hidden");
+ if(f.type.startsWith("video/")){kind="video";video.src=u;video.onloadedmetadata=()=>{fitCanvas(video.videoWidth,video.videoHeight);startLoop();$("status").textContent="Video loaded. Edit it and export when ready.";}}
+ else{kind="image";image=new Image();image.onload=()=>{fitCanvas(image.naturalWidth,image.naturalHeight);startLoop();$("status").textContent="Photo loaded. Add text/effects or export a short canvas video.";};image.src=u;}
+};
+document.querySelectorAll("[data-filter]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-filter]").forEach(x=>x.classList.remove("active"));b.classList.add("active");filter=b.dataset.filter;startLoop()});
+$("rot").onclick=()=>{rotation=(rotation+90)%360; if(kind==="video")fitCanvas(video.videoWidth,video.videoHeight);startLoop()};
+$("mirror").onclick=()=>{mirror=!mirror;startLoop()};
+$("speed").onclick=()=>{speed=speed===1?1.5:speed===1.5?2:.5;video.playbackRate=speed;$("speed").textContent=`Speed ${speed}×`};
+$("mute").onclick=()=>{video.muted=!video.muted;$("mute").textContent=video.muted?"🔇 Muted":"🔊 Sound"};
+$("caption").oninput=startLoop;$("size").oninput=startLoop;$("pos").oninput=startLoop;
+$("play").onclick=()=>{if(kind==="video"){video.play();startLoop()}};
+$("pause").onclick=()=>{video.pause();draw()};
+$("reset").onclick=()=>{rotation=0;mirror=false;filter="none";speed=1;video.playbackRate=1;$("caption").value="";$("speed").textContent="Speed 1×";startLoop()};
+$("newBtn").onclick=()=>location.reload();
+
+$("export").onclick=async()=>{
+ if(!media && !image && !video.src){$("status").textContent="Import media first.";return}
+ if(kind!=="video"){ $("status").textContent="Photo export is not implemented in this quick prototype."; return}
+ const stream=canvas.captureStream(30); try{video.captureStream().getAudioTracks().forEach(t=>stream.addTrack(t))}catch(e){}
+ const chunks=[];let rec;try{rec=new MediaRecorder(stream,{mimeType:"video/webm;codecs=vp9,opus"})}catch(e){rec=new MediaRecorder(stream)}
+ rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);rec.onstop=()=>{let a=document.createElement("a");a.href=URL.createObjectURL(new Blob(chunks,{type:"video/webm"}));a.download="EDITOR_HUB_export.webm";a.click();$("status").textContent="Export finished — check your Downloads.";};
+ recording=true;video.currentTime=0;video.play();rec.start();$("status").textContent="Exporting… press Export again only after it finishes.";
+ video.onended=()=>{if(recording){recording=false;rec.stop()}};
+};
+$("save").onclick=()=>{let data={app:"EDITOR HUB",caption:$("caption").value,filter,rotation,mirror,speed};let a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:"application/json"}));a.download="editor-hub-project.json";a.click();$("status").textContent="Project settings saved."};
+</script>
+</body></html>

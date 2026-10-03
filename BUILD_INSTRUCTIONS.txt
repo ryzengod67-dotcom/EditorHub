@@ -1,0 +1,4 @@
+Open the EDITOR_HUB_Android folder in Android Studio.
+Wait for Gradle sync to finish.
+Then choose Build > Build Bundle(s) / APK(s) > Build APK(s).
+The debug APK will normally appear under app/build/outputs/apk/debug/.
